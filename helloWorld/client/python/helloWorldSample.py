@@ -1,5 +1,6 @@
 from babyLex import LexSession
 from microphone import Microphone
+import signal
 import pyaudio
 import boto3
 import wave
@@ -7,8 +8,10 @@ import time
 from array import array
 
 WW_ENABLED = False
+INTERRUPTED = False
+
 try:
-	import snowboydetect
+	import snowboydecoder
 	WW_ENABLED = True
 except ImportError:
 	WW_ENABLED = False
@@ -16,16 +19,6 @@ except ImportError:
 p = pyaudio.PyAudio()
 
 lex_session = LexSession("TestBot", "$LATEST", "mtavis")
-
-# This is text input sample
-#resp = lex_session.content("Where is Randall", "text/plain; charset=utf-8", "audio/pcm")
-
-# This is audio content sample
-# inputWav = wave.open("C:/data/amazon/alexa/lex/samples/helloWorld/SayHelloToMatt.wav", 'rb')
-
-# inputFrames = inputWav.getnframes()
-# audioInputBuffer = inputWav.readframes(inputFrames)
-
 slowStream = p.open(format=p.get_format_from_width(width=2), channels=1, rate=16000, output=True)
 
 m = Microphone()
@@ -40,15 +33,22 @@ micDoneWavAudio = micDoneWav.readframes(micDoneWav.getnframes())
 micDoneWav.close()
 
 
-while 1:
+if WW_ENABLED:
+	detector = snowboydecoder.HotwordDetector("resources/snowboy.umdl", sensitivity=0.5)
 
-	# determine if WW_ENABLED
-	if not WW_ENABLED:
-		input("Tap Enter to talk to Lex...")
-	else:
-		# drop in loop for Snowboy Detect
-		print("Listening for my name...")
+def signal_handler(signal, frame):
+	global INTERRUPTED
+	INTERRUPTED = True
 
+def interrupt_callback():
+	global INTERRUPTED
+	return INTERRUPTED
+
+
+signal.signal(signal.SIGINT, signal_handler)
+
+def talk_to_lex():
+	global lex_session
 	while 1:
 		#stream.write(audioInputBuffer)
 
@@ -70,6 +70,31 @@ while 1:
 			dialogState == 'ReadyForFulfillment' or
 			dialogState == 'Failed'):
 			break
+
+
+# This is text input sample
+#resp = lex_session.content("Where is Randall", "text/plain; charset=utf-8", "audio/pcm")
+
+# This is audio content sample
+# inputWav = wave.open("C:/data/amazon/alexa/lex/samples/helloWorld/SayHelloToMatt.wav", 'rb')
+
+# inputFrames = inputWav.getnframes()
+# audioInputBuffer = inputWav.readframes(inputFrames)
+
+
+
+
+while 1:
+
+	# determine if WW_ENABLED
+	if not WW_ENABLED:
+		input("Tap Enter to talk to Lex...")
+		talk_to_lex()
+	else:
+		# drop in loop for Snowboy Detect
+		print("Listening for my name...")
+		detector.start(detected_callback=talk_to_lex, interrupt_check=interrupt_callback, sleep_time=0.3)
+
 
 fastStream.stop_stream()
 fastStream.close()
